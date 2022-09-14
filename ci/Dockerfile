@@ -34,5 +34,5 @@ RUN virtualenv env \
     && pip install --upgrade --no-cache-dir pytest future wheel setuptools
 
 CMD nvidia-smi && source env/bin/activate \
-    && pytest -rxXspF pynvml/tests \
+    && pytest --junitxml=test-result/xunit-pynvml.xml -rxXspF pynvml/tests \
     && python setup.py bdist_wheel --dist-dir /sandbox/dist

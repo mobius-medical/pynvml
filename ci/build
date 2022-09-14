@@ -4,6 +4,7 @@ set -ex
 
 export DOCKER_BUILDKIT=1
 mkdir -p dist
+mkdir -p test-result
 
 # Build
 docker build \
@@ -18,4 +19,5 @@ docker run \
     --rm \
     --gpus all \
     --mount type=bind,source="$(pwd)"/dist,target=/sandbox/dist \
+    --mount type=bind,source="$(pwd)"/test-result,target=/sandbox/test-result \
     pynvml-build

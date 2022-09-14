@@ -1,0 +1,41 @@
+pipeline {
+    agent { label "docker-gpu"}
+    environment {
+        DOCKER_BUILDKIT=1
+        UBUNTU_BASE_TAG=20.04
+    }
+    stages {
+        stage("Capture Build Info"){
+            steps {
+                rtBuildInfo (captureEnv: true)
+            }
+        }
+        stage("Build") {
+            steps {
+                sh script: "docker build \
+                    --progress=plain \
+                    --target pynvml-build:${BRANCH}_${BUILD_NUMBER} \
+                    --tag pynvml-build \
+                    --file ci/Dockerfile \
+                    ."
+            }
+        }
+        stage("Test & make wheel"){
+            steps {
+                sh "mkdir -p dist"
+                sh "mkdir -p test-result"
+                sh "docker run \
+                    --rm \
+                    --gpus all \
+                    --mount type=bind,source=${WORKSPACE}/dist,target=/sandbox/dist \
+                    --mount type=bind,source=${WORKSPACE}/test-result,target=/sandbox/test-result \
+                    pynvml-build:${BRANCH}_${BUILD_NUMBER}"
+            }
+        }
+        stage("Cleanup") {
+            steps {
+                sh script: "docker image rm pynvml-build:${BRANCH}_${BUILD_NUMBER}"
+            }
+        }
+    }
+}
