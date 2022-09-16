@@ -3,21 +3,18 @@
 set -ex
 
 export DOCKER_BUILDKIT=1
-mkdir -p dist
-mkdir -p test-result
 
-# Build
 docker build \
     --progress=plain \
-    --target pynvml-build \
-    --tag pynvml-build \
-    --file ci/Dockerfile \
-    .
+    --tag pynvml:${CHANGE_BRANCH}_${BUILD_NUMBER} \
+    --file ci/Dockerfile .
 
-# Test and export wheel
 docker run \
-    --rm \
-    --gpus all \
-    --mount type=bind,source="$(pwd)"/dist,target=/sandbox/dist \
-    --mount type=bind,source="$(pwd)"/test-result,target=/sandbox/test-result \
-    pynvml-build
+    --interactive \
+    --tty \
+    --name pynvml \
+    --gpus all pynvml:${CHANGE_BRANCH}_${BUILD_NUMBER}
+
+docker cp pynvml:/sandbox/artifact .
+docker container rm pynvml
+docker image rm pynvml:${CHANGE_BRANCH}_${BUILD_NUMBER}

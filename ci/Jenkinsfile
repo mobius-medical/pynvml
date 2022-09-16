@@ -10,31 +10,32 @@ pipeline {
                 rtBuildInfo (captureEnv: true)
             }
         }
-        stage("Build") {
+        stage("Build Docker image with wheels") {
             steps {
-                sh script: "docker build \
-                    --progress=plain \
-                    --target pynvml-build:${BRANCH}_${BUILD_NUMBER} \
-                    --tag pynvml-build \
-                    --file ci/Dockerfile \
-                    ."
+                sh script: """
+                    docker build \
+                        --progress=plain \
+                        --tag pynvml:${BUILD_NUMBER} \
+                        --file ci/Dockerfile .
+                    """
             }
         }
-        stage("Test & make wheel"){
+        stage("Test"){
             steps {
-                sh "mkdir -p dist"
-                sh "mkdir -p test-result"
-                sh "docker run \
-                    --rm \
-                    --gpus all \
-                    --mount type=bind,source=${WORKSPACE}/dist,target=/sandbox/dist \
-                    --mount type=bind,source=${WORKSPACE}/test-result,target=/sandbox/test-result \
-                    pynvml-build:${BRANCH}_${BUILD_NUMBER}"
+                sh script: """
+                    docker run \
+                        --interactive \
+                        --name pynvml \
+                        --gpus all pynvml:${BUILD_NUMBER}
+                    """
+                sh script: "docker cp pynvml:/sandbox/artifact ."
+                sh script: "docker container rm pynvml"
+                sh script: "docker image rm pynvml:${BUILD_NUMBER}"
             }
         }
-        stage("Cleanup") {
+        stage("Upload artifacts") {
             steps {
-                sh script: "docker image rm pynvml-build:${BRANCH}_${BUILD_NUMBER}"
+                sh script: "echo Not implemented"
             }
         }
     }
