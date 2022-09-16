@@ -10,7 +10,7 @@ pipeline {
                 rtBuildInfo (captureEnv: true)
             }
         }
-        stage("Build Docker image with wheels") {
+        stage("Build Docker image and wheels") {
             steps {
                 sh script: """
                     docker build \
@@ -20,7 +20,7 @@ pipeline {
                     """
             }
         }
-        stage("Test"){
+        stage("Test and upload"){
             steps {
                 sh script: """
                     docker run \
@@ -39,9 +39,18 @@ pipeline {
                 }
             }
         }
-        stage("Upload artifacts") {
+        stage("Upload wheels"){
             steps {
-                sh script: "echo Not implemented"
+                rtUpload (
+                    failNoOp: true,
+                    serverId: 'uspa-arty',
+                    spec: """{
+                        "files": [{
+                            "pattern": "artifact/pynvml-*.whl",
+                            "target": "m3d-pypi-prerelease"
+                        }]
+                    }""",
+                )
             }
         }
     }
