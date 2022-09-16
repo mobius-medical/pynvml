@@ -15,6 +15,6 @@ docker run \
     --name pynvml \
     --gpus all pynvml:${CHANGE_BRANCH}_${BUILD_NUMBER}
 
-docker cp pynvml:/sandbox/artifact .
+docker cp pynvml:/sandbox/artifacts .
 docker container rm pynvml
 docker image rm pynvml:${CHANGE_BRANCH}_${BUILD_NUMBER}

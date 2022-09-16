@@ -38,10 +38,8 @@ RUN pyenv global $PY2_VERSION $PY3_VERSION  && python3 -m pip install tox && pye
 
 ADD . /sandbox
 WORKDIR /sandbox
-
-# build wheels during docker build
-RUN tox -p -e '{py27,py37}'-wheel
+ENV TOX_PARALLEL_NO_SPINNER=1
 
 # test with `docker run`
-# requires gpu which not available during build
-CMD tox -e py27,py37
+# requires gpu which is not available during build
+CMD tox -p

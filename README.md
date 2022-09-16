@@ -10,7 +10,7 @@ Changes from upstream:
 
 Build, test, export wheel:
 --------------------------
-Run `./ci/build` from repository root. If successful, wheel will be placed in `dist` directory.
+Run `./ci/build` from repository root. If successful, wheel will be placed in `artifacts` directory.
 
 
 (upstream readme below)

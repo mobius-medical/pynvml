@@ -10,7 +10,7 @@ pipeline {
                 rtBuildInfo (captureEnv: true)
             }
         }
-        stage("Build Docker image and wheels") {
+        stage("Build Docker Image") {
             steps {
                 sh script: """
                     docker build \
@@ -20,7 +20,7 @@ pipeline {
                     """
             }
         }
-        stage("Test"){
+        stage("Build Wheels & Test"){
             steps {
                 sh script: """
                     docker run \
@@ -28,14 +28,14 @@ pipeline {
                         --name pynvml \
                         --gpus all pynvml:${BUILD_NUMBER}
                     """
-                sh script: "docker cp pynvml:/sandbox/artifact ."
+                sh script: "docker cp pynvml:/sandbox/artifacts ."
                 sh script: "docker container rm pynvml"
                 sh script: "docker image rm pynvml:${BUILD_NUMBER}"
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'artifact/xunit-*.xml'
-                    junit testResults: 'artifact/xunit-*.xml'
+                    archiveArtifacts artifacts: 'artifacts/xunit-*.xml'
+                    junit testResults: 'artifacts/xunit-*.xml'
                 }
             }
         }
@@ -46,7 +46,7 @@ pipeline {
                     serverId: 'uspa-arty',
                     spec: """{
                         "files": [{
-                            "pattern": "artifact/pynvml-*.whl",
+                            "pattern": "artifacts/pynvml-*.whl",
                             "target": "m3d-pypi-prerelease"
                         }]
                     }""",
