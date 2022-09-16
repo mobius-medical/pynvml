@@ -32,6 +32,12 @@ pipeline {
                 sh script: "docker container rm pynvml"
                 sh script: "docker image rm pynvml:${BUILD_NUMBER}"
             }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'artifact/xunit-*.xml'
+                    junit testResults: 'artifact/xunit-*.xml'
+                }
+            }
         }
         stage("Upload artifacts") {
             steps {
