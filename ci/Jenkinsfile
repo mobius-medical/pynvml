@@ -1,19 +1,18 @@
 pipeline {
-    agent { label "docker-gpu"}
+    agent {
+        dockerfile {
+            filename 'Dockerfile'
+            dir './ci'
+            label 'docker-gpu'
+            args '--gpus all'
+        }
+    }
     environment {
         DOCKER_BUILDKIT=1
         UBUNTU_BASE_TAG=16.04
     }
     stages {
-        stage("pynvml"){
-            agent {
-                dockerfile {
-                    filename 'Dockerfile'
-                    dir './ci'
-                    label 'docker-gpu'
-                    args '--gpus all'
-                }
-            }
+        stage('pynvml'){
             steps {
                 rtBuildInfo (captureEnv: true)
                 sh script: 'tox -p'
@@ -23,19 +22,22 @@ pipeline {
                     archiveArtifacts artifacts: 'artifacts/*'
                     junit testResults: 'artifacts/xunit-*.xml'
                 }
-                success {
-                    rtUpload (
-                        failNoOp: true,
-                        serverId: 'uspa-arty',
-                        spec: """{
-                            "files": [{
-                                "pattern": "artifacts/pynvml-*.whl",
-                                "target": "m3d-playground"
-                            }]
-                        }""",
-                    )
-                    rtPublishBuildInfo(serverId: 'uspa-arty')
-                }
+            }
+        }
+        stage ('Upload Wheels'){
+            when { branch 'master' }
+            steps {
+                rtUpload (
+                    failNoOp: true,
+                    serverId: 'uspa-arty',
+                    spec: """{
+                        "files": [{
+                            "pattern": "artifacts/pynvml-*.whl",
+                            "target": "m3d-pypi-prerelease"
+                        }]
+                    }""",
+                )
+                rtPublishBuildInfo(serverId: 'uspa-arty')
             }
         }
     }
