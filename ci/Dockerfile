@@ -1,45 +1,44 @@
-# syntax=docker/dockerfile:1.4
-# pynvml as distributed on pypi requires python 3.6+
-# This Dockerfile builds and tests for python 2.7
-#
-# Supports Ubuntu 16.04 and 20.04
+ARG CUDA_VERSION=9.1
+ARG UBUNTU_VERSION=16.04
+FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu${UBUNTU_VERSION} AS build-stage
 
-ARG UBUNTU_BASE_TAG=20.04
-FROM ubuntu:${UBUNTU_BASE_TAG} as pynvml-build
-LABEL description="Build image for pynvml"
+RUN apt-get update && apt-get install -y \
+    apt-transport-https \
+    build-essential \
+    curl \
+    libbz2-dev \
+    libffi-dev \
+    liblzma-dev \
+    libncurses5-dev \
+    libpython2.7-dev \
+    libreadline6-dev \
+    libsqlite3-dev \
+    libssl-dev \
+    make \
+    openssh-client \
+    python \
+    tk-dev \
+    zlib1g-dev \
+  && rm -rf /var/lib/apt/lists/*
 
-ARG DEBIAN_FRONTEND=noninteractive
+# Install Python 3.7 and tox
+ADD https://www.python.org/ftp/python/3.7.13/Python-3.7.13.tgz Python-3.7.13.tgz
+RUN tar xf Python-3.7.13.tgz && cd Python-3.7.13/ && ./configure && make && make install
+RUN pip3 install tox
 
-SHELL ["/bin/bash", "-c"]
+ARG DOCKER_USER=jenkins
+ARG DOCKER_UID=1002
+ARG DOCKER_GROUP=jenkins
+ARG DOCKER_GID=1001
+RUN groupadd --gid $DOCKER_GID $DOCKER_GROUP \
+    && useradd --uid $DOCKER_UID --gid $DOCKER_GID --shell /bin/bash --create-home $DOCKER_USER
 
-ENV PACKAGES_PYENV \
-  make build-essential libssl-dev zlib1g-dev \
-  libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm \
-  libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+RUN chown -R $DOCKER_USER:$DOCKER_USER /home/$DOCKER_USER
 
+USER $DOCKER_USER
 
-RUN apt-get update \
-    && apt-get install -y \
-        curl \
-        git \
-        $PACKAGES_PYENV \
-    && apt-get clean
+RUN mkdir -p -m 0700 ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
+ENV PATH=/usr/local/cuda/bin:${PATH}
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
 
-ARG PY2_VERSION=2.7.18
-ARG PY3_VERSION=3.7.14
-
-ENV HOME=/root
-ENV PYENV_ROOT=$HOME/.pyenv
-ENV PATH=$PYENV_ROOT/shims:$PYENV_ROOT/bin:$PATH
-RUN curl https://pyenv.run | bash
-RUN pyenv install $PY2_VERSION
-RUN pyenv install $PY3_VERSION
-RUN pyenv global $PY2_VERSION $PY3_VERSION  && python3 -m pip install tox && pyenv rehash
-
-ADD . /sandbox
-WORKDIR /sandbox
-ENV TOX_PARALLEL_NO_SPINNER=1
-
-# test with `docker run`
-# requires gpu which is not available during build
-CMD tox -p
+ENTRYPOINT bash
