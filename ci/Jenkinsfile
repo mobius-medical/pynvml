@@ -2,55 +2,40 @@ pipeline {
     agent { label "docker-gpu"}
     environment {
         DOCKER_BUILDKIT=1
-        UBUNTU_BASE_TAG=20.04
+        UBUNTU_BASE_TAG=16.04
     }
     stages {
-        stage("Capture Build Info"){
+        stage("pynvml"){
+            agent {
+                dockerfile {
+                    filename 'Dockerfile'
+                    dir './ci'
+                    label 'docker-gpu'
+                    args '--gpus all'
+                }
+            }
             steps {
                 rtBuildInfo (captureEnv: true)
-            }
-        }
-        stage("Build Docker Image") {
-            steps {
-                sh script: """
-                    docker build \
-                        --progress=plain \
-                        --tag pynvml:${BUILD_NUMBER} \
-                        --file ci/Dockerfile .
-                    """
-            }
-        }
-        stage("Build Wheels & Test"){
-            steps {
-                sh script: """
-                    docker run \
-                        --interactive \
-                        --name pynvml \
-                        --gpus all pynvml:${BUILD_NUMBER}
-                    """
-                sh script: "docker cp pynvml:/sandbox/artifacts ."
-                sh script: "docker container rm pynvml"
-                sh script: "docker image rm pynvml:${BUILD_NUMBER}"
+                sh script: 'tox -p'
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'artifacts/xunit-*.xml'
+                    archiveArtifacts artifacts: 'artifacts/*'
                     junit testResults: 'artifacts/xunit-*.xml'
                 }
-            }
-        }
-        stage("Upload wheels"){
-            steps {
-                rtUpload (
-                    failNoOp: true,
-                    serverId: 'uspa-arty',
-                    spec: """{
-                        "files": [{
-                            "pattern": "artifacts/pynvml-*.whl",
-                            "target": "m3d-pypi-prerelease"
-                        }]
-                    }""",
-                )
+                success {
+                    rtUpload (
+                        failNoOp: true,
+                        serverId: 'uspa-arty',
+                        spec: """{
+                            "files": [{
+                                "pattern": "artifacts/pynvml-*.whl",
+                                "target": "m3d-playground"
+                            }]
+                        }""",
+                    )
+                    rtPublishBuildInfo(serverId: 'uspa-arty')
+                }
             }
         }
     }

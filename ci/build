@@ -1,20 +1,24 @@
 #!/bin/bash
 # run this file from the repository root
+# useful for local testing without jenkins
 set -ex
 
 export DOCKER_BUILDKIT=1
 
 docker build \
     --progress=plain \
-    --tag pynvml:${CHANGE_BRANCH}_${BUILD_NUMBER} \
+    --tag pynvml \
+    --build-arg DOCKER_UID=$(id -u) \
+    --build-arg DOCKER_GID=$(id -g) \
     --file ci/Dockerfile .
+
 
 docker run \
     --interactive \
     --tty \
     --name pynvml \
-    --gpus all pynvml:${CHANGE_BRANCH}_${BUILD_NUMBER}
-
-docker cp pynvml:/sandbox/artifacts .
-docker container rm pynvml
-docker image rm pynvml:${CHANGE_BRANCH}_${BUILD_NUMBER}
+    --mount type=bind,source=$(pwd)/,target=/home/jenkins/pynvml/ \
+    --gpus all \
+    --rm \
+    --workdir /home/jenkins/pynvml \
+    pynvml tox -p
