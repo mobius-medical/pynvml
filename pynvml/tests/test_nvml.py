@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import pynvml
 import pytest
 import time
@@ -9,6 +11,11 @@ NVML_PCIE_UTIL_RX_BYTES = pynvml.NVML_PCIE_UTIL_RX_BYTES
 NVML_PCIE_UTIL_COUNT = pynvml.NVML_PCIE_UTIL_COUNT
 
 XFAIL_LEGACY_NVLINK_MSG = "Legacy NVLink test expected to fail."
+XFAIL_450_REQUIRED = "Not available on driver versions < 450."
+XFAIL_SINGLE_GPU = "Cannot run test on single GPU."
+XFAIL_VPGU = "Not available on vGPU."
+XFAIL_UNSUPPORTED_HW = "Not supported on this hardware."
+
 
 # Fixture to initialize and finalize nvml
 @pytest.fixture(scope="module")
@@ -39,6 +46,15 @@ def ngpus(nvml):
     print("[" + str(result) + " GPUs]", end=" ")
     return result
 
+# check if vGPU
+# vGPUs do not support all features
+# see https://docs.nvidia.com/grid/14.0/pdf/grid-management-sdk-user-guide.pdf
+@pytest.fixture
+def is_vgpu(handles):
+    for handle in handles:
+        if pynvml.nvmlDeviceGetVirtualizationMode(handle) == pynvml.NVML_GPU_VIRTUALIZATION_MODE_VGPU:
+            return True
+    return False 
 
 # Get handles using pynvml.nvmlDeviceGetHandleByIndex
 @pytest.fixture
@@ -50,7 +66,9 @@ def handles(ngpus):
 
 # Get GPU MIG count
 @pytest.fixture
-def nmigs(handles):
+def nmigs(handles, driver):
+    if driver < 450.0:
+        pytest.xfail(XFAIL_450_REQUIRED)
     result = pynvml.nvmlDeviceGetMaxMigDeviceCount(handles[0])
     print("[" + str(result) + " MIGs]", end=" ")
     return result
@@ -65,14 +83,21 @@ def mig_handles(nmigs):
 
 
 @pytest.fixture
-def serials(ngpus, handles):
-    serials = [pynvml.nvmlDeviceGetSerial(handles[i]) for i in range(ngpus)]
-    assert len(serials) == ngpus
-    return serials
+def serials(ngpus, handles, is_vgpu):
+    if is_vgpu:
+        pytest.xfail(XFAIL_VPGU)
+    try:
+        serials = [pynvml.nvmlDeviceGetSerial(handles[i]) for i in range(ngpus)]
+        assert len(serials) == ngpus
+        return serials
+    except pynvml.NVMLError_NotSupported:
+        pytest.xfail(XFAIL_UNSUPPORTED_HW)
 
 
 @pytest.fixture
 def uuids(ngpus, handles):
+    if is_vgpu:
+        pytest.xfail(XFAIL_VPGU)
     uuids = [pynvml.nvmlDeviceGetUUID(handles[i]) for i in range(ngpus)]
     assert len(uuids) == ngpus
     return uuids
@@ -94,7 +119,7 @@ def test_nvmlSystemGetNVMLVersion(nvml):
     vsn = 0.0
     vsn = pynvml.nvmlSystemGetNVMLVersion().decode()
     print("[NVML Version: " + vsn + "]", end=" ")
-    assert vsn > LooseVersion("0.0")
+    assert str(vsn) > LooseVersion("0.0")
 
 
 def test_nvmlSystemGetCudaDriverVersion(nvml):
@@ -116,7 +141,7 @@ def test_nvmlSystemGetDriverVersion(nvml):
     vsn = 0.0
     vsn = pynvml.nvmlSystemGetDriverVersion().decode()
     print("[Driver Version: " + vsn + "]", end=" ")
-    assert vsn > LooseVersion("0.0")  # Developing with 396.44
+    assert str(vsn) > LooseVersion("0.0")  # Developing with 396.44
 
 
 ## Unit "Get" Functions (Skipping for now) ##
@@ -158,7 +183,9 @@ def test_nvmlDeviceGetHandleByPciBusId(ngpus, pci_info):
 @pytest.mark.parametrize(
     "scope", [pynvml.NVML_AFFINITY_SCOPE_NODE, pynvml.NVML_AFFINITY_SCOPE_SOCKET]
 )
-def test_nvmlDeviceGetMemoryAffinity(handles, scope):
+def test_nvmlDeviceGetMemoryAffinity(handles, scope, driver):
+    if driver < 450.0:
+        pytest.xfail(XFAIL_450_REQUIRED)
     size = 1024
     for handle in handles:
         nodeSet = pynvml.nvmlDeviceGetMemoryAffinity(handle, size, scope)
@@ -168,7 +195,9 @@ def test_nvmlDeviceGetMemoryAffinity(handles, scope):
 @pytest.mark.parametrize(
     "scope", [pynvml.NVML_AFFINITY_SCOPE_NODE, pynvml.NVML_AFFINITY_SCOPE_SOCKET]
 )
-def test_nvmlDeviceGetCpuAffinityWithinScope(handles, scope):
+def test_nvmlDeviceGetCpuAffinityWithinScope(handles, scope, driver):
+    if driver < 450.0:
+        pytest.xfail(XFAIL_450_REQUIRED)
     size = 1024
     for handle in handles:
         cpuSet = pynvml.nvmlDeviceGetCpuAffinityWithinScope(handle, size, scope)
@@ -219,8 +248,22 @@ def test_nvmlDeviceGetP2PStatus(handles, index):
 # [Skipping] pynvml.nvmlDeviceGetDefaultApplicationsClock
 # [Skipping] pynvml.nvmlDeviceGetSupportedMemoryClocks
 # [Skipping] pynvml.nvmlDeviceGetSupportedGraphicsClocks
-# [Skipping] pynvml.nvmlDeviceGetFanSpeed
-# [Skipping] pynvml.nvmlDeviceGetTemperature
+
+# Test pynvml.nvmlDeviceGetFanSpeed
+def test_nvmlDeviceGetFanSpeed(ngpus, handles):
+    for i in range(ngpus):
+        speed = pynvml.nvmlDeviceGetFanSpeed(handles[i])
+        assert speed >= 0
+
+
+# Test pynvml.nvmlDeviceGetTemperature
+def test_nvmlDeviceGetTemperature(ngpus, handles):
+    for i in range(ngpus):
+        temp = pynvml.nvmlDeviceGetTemperature(handles[i], pynvml.NVML_TEMPERATURE_GPU)
+        # Should not be freezing. Is that reasonable?
+        assert temp > 0
+
+
 # [Skipping] pynvml.nvmlDeviceGetTemperatureThreshold
 # [Skipping] pynvml.nvmlDeviceGetPowerState
 # [Skipping] pynvml.nvmlDeviceGetPerformanceState
@@ -231,14 +274,18 @@ def test_nvmlDeviceGetP2PStatus(handles, index):
 # [Skipping] pynvml.nvmlDeviceGetEnforcedPowerLimit
 
 # Test pynvml.nvmlDeviceGetPowerUsage
-def test_nvmlDeviceGetPowerUsage(ngpus, handles):
+def test_nvmlDeviceGetPowerUsage(ngpus, handles, is_vgpu):
+    if is_vgpu:
+        pytest.xfail(XFAIL_VPGU)
     for i in range(ngpus):
         power_mWatts = pynvml.nvmlDeviceGetPowerUsage(handles[i])
         assert power_mWatts >= 0.0
 
 
 # Test pynvml.nvmlDeviceGetTotalEnergyConsumption
-def test_nvmlDeviceGetTotalEnergyConsumption(ngpus, handles):
+def test_nvmlDeviceGetTotalEnergyConsumption(ngpus, handles, is_vgpu):
+    if is_vgpu:
+        pytest.xfail(XFAIL_VPGU)
     for i in range(ngpus):
         energy_mJoules1 = pynvml.nvmlDeviceGetTotalEnergyConsumption(handles[i])
         for j in range(10):  # idle for 150 ms
@@ -329,7 +376,11 @@ def test_nvmlDeviceGetUtilizationRates(ngpus, handles):
 # [Skipping] pynvml.nvmlDeviceGetViolationStatus
 
 # Test pynvml.nvmlDeviceGetPcieThroughput
-def test_nvmlDeviceGetPcieThroughput(ngpus, handles):
+def test_nvmlDeviceGetPcieThroughput(ngpus, handles, is_vgpu):
+    if is_vgpu:
+        pytest.xfail(XFAIL_VPGU)
+    if ngpus == 1:
+        pytest.xfail(XFAIL_SINGLE_GPU)
     for i in range(ngpus):
         tx_bytes_tp = pynvml.nvmlDeviceGetPcieThroughput(
             handles[i], NVML_PCIE_UTIL_TX_BYTES
@@ -378,6 +429,8 @@ def test_nvml_nvlink_properties(ngpus, handles, driver):
     ],
 )  # Link is supported on this device
 def test_nvml_nvlink_capability(ngpus, handles, cap_type):
+    if ngpus == 1:
+        pytest.xfail(XFAIL_SINGLE_GPU)
     for i in range(ngpus):
         for j in range(pynvml.NVML_NVLINK_MAX_LINKS):
             cap = pynvml.nvmlDeviceGetNvLinkCapability(handles[i], j, cap_type)
